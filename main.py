@@ -1,5 +1,14 @@
 from random import randint
 
+import datetime
+
+ALLOWED_FILE_TYPES = ['.py', '.html', '.js', '.css']
+ENFORCE_FILE_TYPES = False
+
+
+class InvalidFileType(Exception):
+    pass
+
 
 class Helpers:
     @staticmethod
@@ -10,12 +19,19 @@ class Helpers:
 class FileChange:
     def __init__(self, file, additions, deletions):
         self.file = file
-        self.additions = additions
-        self.deletions = deletions
+        try:
+            self.additions = int(additions)
+            self.deletions = int(deletions)
+        except ValueError:
+            self.additions = 0
+            self.deletions = 0
 
 
 class File:
     def __init__(self, path):
+        self.file_type = path[path.rfind('.'):-1]
+        if ENFORCE_FILE_TYPES is True and self.file_type not in ALLOWED_FILE_TYPES:
+            raise InvalidFileType
         self.path = path
         self.name = path[path.rfind('/')+1:]
 
@@ -31,12 +47,19 @@ class Author:
 class Commit:
     def __init__(self, short_hash, author_time, commit_email, commit_time, branch):
         self.short_hash = short_hash
-        self.author_time = author_time
+        self.author_time = datetime.datetime.fromtimestamp(float(author_time))
         self.commit_email = commit_email
-        self.commit_time = commit_time
+        self.commit_time = datetime.datetime.fromtimestamp(float(commit_time))
         self.branch = branch
         self.comment = ''
         self.file_changes = []
+
+    @property
+    def number_of_changes(self):
+        changes = 0
+        for change in self.file_changes:
+            changes += change.additions + change.deletions
+        return changes
 
     def __str__(self):
         return "%s %s" % (self.short_hash, self.commit_time)
@@ -97,9 +120,13 @@ class Parser:
         additions, deletions, file_path = parameters
 
         if not file_path in self.files:
-            self.files[file_path] = File(file_path)
+            try:
+                self.files[file_path] = File(file_path)
+            except InvalidFileType:
+                return
 
         file = self.files[file_path]
+
         file_change = FileChange(file, additions, deletions)
         self.current_author.commits[-1].file_changes.append(file_change)
 
@@ -117,11 +144,6 @@ class Parser:
         }
         return commit_parameters, author_parameters
 
-    def print_authors(self):
-        print("{:<7}{:<51}".format('Author', 'Commit number'))
-        for key, author in self.authors.items():
-            print("{:<10}{:<10}".format(str(author), str(len(author.commits))))
-
     def is_start(self, line):
         return line[:5] == 'start'
 
@@ -131,5 +153,63 @@ class Parser:
     def is_startcomment(self, line):
         return line[:12] == 'startcomment'
 
+
+class Statistics:
+    def __init__(self, authors, files):
+        self.authors = authors
+        self.files = files
+        self.commits_per_day = None
+
+    def extract_statistics(self):
+        for key, author in self.authors.items():
+            setattr(author, 'commits_per_day', self.get_commits_per_day(author.commits))
+            setattr(author, 'files_per_commit', self.get_files_per_commit(author.commits))
+            setattr(author, 'commits_under_50', self.get_commits_under(author.commits, 25))
+            setattr(author, 'commits_under_500', self.get_commits_under(author.commits, 250))
+
+    def get_commits_per_day(self, commits):
+        day_averages = [0]
+        current_time = commits[0].author_time
+        DAY_THRESHOLD = 8
+        current_day_span = datetime.timedelta(hours=0)
+
+        for commit in commits:
+            if commit.author_time > current_time - datetime.timedelta(hours=DAY_THRESHOLD) and current_day_span < datetime.timedelta(hours=18):
+                day_averages[-1] += 1
+                current_day_span = current_time - commit.author_time
+            else:
+                day_averages.append(1)
+                current_day_span = datetime.timedelta(hours=0)
+            current_time = commit.author_time
+        return sum(day_averages)/len(day_averages)
+
+    def get_files_per_commit(self, commits):
+        sum_files = []
+        for commit in commits:
+            sum_files.append(len(commit.file_changes))
+        return sum(sum_files)/len(commits)
+
+    def get_commits_under(self, commits, number_of_lines):
+        valid_commits = 0
+        for commit in commits:
+            if commit.number_of_changes < number_of_lines:
+                valid_commits += 1
+        return valid_commits/len(commits)
+
+    def print_authors(self):
+        print("{:<7}{:<15}{:<15}{:<15}{:<15}{:<15}".format('Author', 'Commit number', 'Commits/day', 'Files/commit', 'Commits < 25', 'Commits < 250'))
+        for key, author in self.authors.items():
+            print("{:<7}{:<15}{:<15.2f}{:<15.2f}{:<15.2f}{:<15.2f}".format(
+                    str(author),
+                    str(len(author.commits)),
+                    author.commits_per_day,
+                    author.files_per_commit,
+                    author.commits_under_50,
+                    author.commits_under_500
+            ))
+
+
 parser = Parser('logs/project_gitlog.log')
-parser.print_authors()
+statistics = Statistics(parser.authors, parser.files)
+statistics.extract_statistics()
+statistics.print_authors()
