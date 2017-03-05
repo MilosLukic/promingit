@@ -2,8 +2,8 @@ from random import randint
 
 import datetime
 
-ALLOWED_FILE_TYPES = ['.py', '.html', '.js', '.css']
-ENFORCE_FILE_TYPES = False
+ALLOWED_FILE_TYPES = ['.py', '.html', '.js', '.css', '.rb']
+ENFORCE_FILE_TYPES = True
 
 
 class InvalidFileType(Exception):
@@ -25,7 +25,10 @@ class FileChange:
         except ValueError:
             self.additions = 0
             self.deletions = 0
-
+        self.changes = self.additions + self.deletions
+        self.new_lines = self.additions - self.deletions
+        if self.new_lines < 0:
+            self.new_lines = 0
 
 class File:
     def __init__(self, path):
@@ -34,6 +37,10 @@ class File:
             raise InvalidFileType
         self.path = path
         self.name = path[path.rfind('/')+1:]
+
+    @property
+    def is_test(self):
+        return 'test' in self.name[:4] or 'spec.rb' in self.name
 
 
 class Author:
@@ -60,6 +67,21 @@ class Commit:
         for change in self.file_changes:
             changes += change.additions + change.deletions
         return changes
+
+    @property
+    def number_of_new_lines(self):
+        new_lines = 0
+        for change in self.file_changes:
+            new_lines += change.new_lines
+        return new_lines
+
+    @property
+    def number_of_test_new_lines(self):
+        new_lines = 0
+        for change in self.file_changes:
+            if change.file.is_test:
+                new_lines += change.new_lines
+        return new_lines
 
     def __str__(self):
         return "%s %s" % (self.short_hash, self.commit_time)
@@ -166,6 +188,8 @@ class Statistics:
             setattr(author, 'files_per_commit', self.get_files_per_commit(author.commits))
             setattr(author, 'commits_under_50', self.get_commits_under(author.commits, 25))
             setattr(author, 'commits_under_500', self.get_commits_under(author.commits, 250))
+            setattr(author, 'all_new_lines', self.get_all_new_lines(author.commits))
+            setattr(author, 'test_line_ratio', self.get_test_line_ratio(author.commits))
 
     def get_commits_per_day(self, commits):
         day_averages = [0]
@@ -196,16 +220,25 @@ class Statistics:
                 valid_commits += 1
         return valid_commits/len(commits)
 
+    def get_all_new_lines(self, commits):
+        return sum([commit.number_of_new_lines for commit in commits])
+
+    def get_test_line_ratio(self, commits):
+        return sum([commit.number_of_test_new_lines for commit in commits])/self.get_all_new_lines(commits)
+
     def print_authors(self):
-        print("{:<7}{:<15}{:<15}{:<15}{:<15}{:<15}".format('Author', 'Commit number', 'Commits/day', 'Files/commit', 'Commits < 25', 'Commits < 250'))
+        print("{:<7}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}".format('Author', 'Commit number', 'Commits/day', 'Files/commit',
+                                                           'Commits < 25', 'Commits < 250', 'New lines', 'Test line ratio'))
         for key, author in self.authors.items():
-            print("{:<7}{:<15}{:<15.2f}{:<15.2f}{:<15.2f}{:<15.2f}".format(
+            print("{:<7}{:<15}{:<15.2f}{:<15.2f}{:<15.2f}{:<15.2f}{:<15}{:<15.2f}".format(
                     str(author),
                     str(len(author.commits)),
                     author.commits_per_day,
                     author.files_per_commit,
                     author.commits_under_50,
-                    author.commits_under_500
+                    author.commits_under_500,
+                    author.all_new_lines,
+                    author.test_line_ratio
             ))
 
 
