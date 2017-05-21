@@ -3,7 +3,7 @@ from random import randint
 import datetime
 
 ALLOWED_FILE_TYPES = ['.py', '.html', '.js', '.css', '.rb']
-ENFORCE_FILE_TYPES = True
+ENFORCE_FILE_TYPES = False
 
 
 class InvalidFileType(Exception):
@@ -82,6 +82,10 @@ class Commit:
             if change.file.is_test:
                 new_lines += change.new_lines
         return new_lines
+
+    @property
+    def is_merge_commit(self):
+        return 'Merge branch' in self.comment
 
     def __str__(self):
         return "%s %s" % (self.short_hash, self.commit_time)
@@ -190,6 +194,7 @@ class Statistics:
             setattr(author, 'commits_under_500', self.get_commits_under(author.commits, 250))
             setattr(author, 'all_new_lines', self.get_all_new_lines(author.commits))
             setattr(author, 'test_line_ratio', self.get_test_line_ratio(author.commits))
+            setattr(author, 'merge_commits', self.get_all_merge_commits(author.commits))
 
     def get_commits_per_day(self, commits):
         day_averages = [0]
@@ -223,14 +228,19 @@ class Statistics:
     def get_all_new_lines(self, commits):
         return sum([commit.number_of_new_lines for commit in commits])
 
+    def get_all_merge_commits(self, commits):
+        return len([commit for commit in commits if commit.is_merge_commit])
+
     def get_test_line_ratio(self, commits):
         return sum([commit.number_of_test_new_lines for commit in commits])/self.get_all_new_lines(commits)
 
     def print_authors(self):
-        print("{:<7}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}".format('Author', 'Commit number', 'Commits/day', 'Files/commit',
-                                                           'Commits < 25', 'Commits < 250', 'New lines', 'Test line ratio'))
+        print("{:<7}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}{:<15}".format(
+                'Author', 'Commit number', 'Commits/day', 'Files/commit',
+                'Commits < 25', 'Commits < 250', 'New lines', 'Test line ratio', 'Merge Commits'
+        ))
         for key, author in self.authors.items():
-            print("{:<7}{:<15}{:<15.2f}{:<15.2f}{:<15.2f}{:<15.2f}{:<15}{:<15.2f}".format(
+            print("{:<7}{:<15}{:<15.2f}{:<15.2f}{:<15.2f}{:<15.2f}{:<15}{:<15.2f}{:<15}".format(
                     str(author),
                     str(len(author.commits)),
                     author.commits_per_day,
@@ -238,7 +248,8 @@ class Statistics:
                     author.commits_under_50,
                     author.commits_under_500,
                     author.all_new_lines,
-                    author.test_line_ratio
+                    author.test_line_ratio,
+                    author.merge_commits
             ))
 
 
