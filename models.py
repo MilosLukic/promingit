@@ -90,3 +90,22 @@ class Commit:
 
     def __str__(self):
         return "%s %s" % (self.short_hash, self.commit_time)
+
+
+class Project:
+    def __init__(self, time_from, time_to):
+        self.time_from = time_from
+        self.time_to = time_to
+
+        self.num_authors = 0
+        self.commit_number = 0
+        self.all_new_lines = 0
+        self.all_deleted_lines = 0
+        self.commits_per_day = 0
+        self.files_per_commit = 0
+        self.lines_per_commit = 0
+        self.commits_under_25 = 0
+        self.commits_above_500 = 0
+        self.test_line_number = 0
+        self.test_line_ratio = 0
+        self.merge_commits = 0
