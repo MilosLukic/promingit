@@ -1,3 +1,15 @@
+import json
+
+class GeneralSerializer:
+    content = []
+
+    def insert(self, content, meta):
+        self.content.append({'content': content, 'meta': meta})
+
+    def serialize(self):
+        return json.dumps(self.content)
+
+
 class AuthorSerializer:
     fields = ['author', 'commit_number', 'all_new_lines', 'all_deleted_lines', 'commits_per_day',
               'files_per_commit', 'lines_per_commit', 'commits_under_25',
@@ -21,3 +33,14 @@ class AuthorSerializer:
             self.test_line_ratio,
             self.merge_commits
         ))
+
+    def get_dict(self):
+        self.attr_dict = {}
+        for field in self.fields:
+            self.attr_dict[field] = getattr(self, field)
+        return self.attr_dict
+
+
+class EventSerializer:
+    def __init__(self):
+        pass

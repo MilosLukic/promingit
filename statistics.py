@@ -1,19 +1,22 @@
 import datetime
 
-from serializer import AuthorSerializer
+from serializer import AuthorSerializer, GeneralSerializer
 
 
-class PeriodStatistics:
-    def __init__(self, data_container):
+class AuthorPeriodStatistics:
+    def __init__(self, data_container, time_from=None, time_to=None):
         self.authors = data_container.author_dict
         self.files = data_container.file_dict
         self.commits_per_day = None
-        self.serialized_author_data = []
+        self.obj_author_data = []
+        self.time_from = time_from
+        self.time_to = time_to
+        self.extract_statistics()
 
-    def extract_statistics(self, time_from=None, time_to=None):
-        self.serialized_author_data = []
+    def extract_statistics(self):
+        self.obj_author_data = []
         for key, author in self.authors.items():
-            author_commits = self.filter_author_commits(author, time_from, time_to)
+            author_commits = self.filter_author_commits(author)
             if not author_commits:
                 continue
             setattr(author, 'author', author.author_email)
@@ -27,16 +30,16 @@ class PeriodStatistics:
             setattr(author, 'commits_above_500', self.get_commits_under(author_commits, 500))
             setattr(author, 'test_line_ratio', self.get_test_line_ratio(author_commits))
             setattr(author, 'merge_commits', self.get_all_merge_commits(author_commits))
-            self.serialized_author_data.append(AuthorSerializer(author))
+            self.obj_author_data.append(AuthorSerializer(author))
 
 
-    def filter_author_commits(self, author, time_from=None, time_to=None):
-        if not time_from or not time_to:
+    def filter_author_commits(self, author):
+        if not self.time_from or not self.time_to:
             return author.commits
         author_commits = []
-        if time_from and time_to:
+        if self.time_from and self.time_to:
             for commit in author.commits:
-                if commit.commit_time > time_from and commit.commit_time < time_to:
+                if commit.commit_time > self.time_from and commit.commit_time < self.time_to:
                     author_commits.append(commit)
         return author_commits
 
@@ -102,33 +105,51 @@ class PeriodStatistics:
                 'Author', 'Commit number', 'New lines', 'Deleted lines', 'Commits/day', 'Files/commit', 'Lines/commit',
                 'Commits < 25', 'Commits > 500',  'Test ratio', 'Merge Commits'
         ))
-        for serialized_author in self.serialized_author_data:
+        for serialized_author in self.obj_author_data:
             serialized_author.print_author()
+
+    def serialize_author_data(self):
+        return [author_obj.get_dict() for author_obj in self.obj_author_data], \
+               {'time_from': str(self.time_from), 'time_to': str(self.time_to)}
+
+    def print_statistics(self):
+        if self.time_from:
+            print("Period %s - %s" % (str(self.time_from), str(self.time_to)))
+        else:
+            print('All time stats')
+        self.print_authors()
+        print(" ")
+
 
 class Statistics:
     def __init__(self, data_container):
-        self.serialized_statistics = None
+        self.general_serializer = GeneralSerializer()
         self.data_container = data_container
-
+        self.quartal_statistics = []
+        self.all_time_stats = None
 
     def generate_statistics(self):
-        all_time_stats = self.generate_all_time_stats()
-        quartal_statistics = self.generate_quartal_statistics(all_time_stats)
+        self.all_time_stats = self.generate_all_time_stats()
+        self.generate_quartal_statistics()
 
     def generate_all_time_stats(self):
-        statistics = PeriodStatistics(self.data_container)
-        statistics.extract_statistics()
-        statistics.print_authors()
+        statistics = AuthorPeriodStatistics(self.data_container)
+        self.general_serializer.insert(*statistics.serialize_author_data())
         return statistics
 
-    def generate_quartal_statistics(self, stats):
+    def generate_quartal_statistics(self):
         start_date, end_date = self.get_project_interval()
         quartal = datetime.timedelta(days=90)
         while start_date + quartal < end_date:
-            stats.extract_statistics(time_from=start_date, time_to=start_date + quartal)
-            print(start_date, start_date + quartal)
-            stats.print_authors()
+            stats = AuthorPeriodStatistics(self.data_container, time_from=start_date, time_to=start_date + quartal)
             start_date += quartal
+            self.quartal_statistics.append(stats)
+            self.general_serializer.insert(*stats.serialize_author_data())
+
+    def print_statistics(self):
+        self.all_time_stats.print_statistics()
+        for statistics in self.quartal_statistics:
+            statistics.print_statistics()
 
     def get_project_interval(self):
         return self.data_container.commit_list[-1].commit_time, self.data_container.commit_list[0].commit_time
